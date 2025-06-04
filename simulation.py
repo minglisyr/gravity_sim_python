@@ -2,7 +2,7 @@
 from body import Body
 from quadtree import QuadTree
 import os
-import multiprocessing as mp
+from concurrent.futures import ThreadPoolExecutor
 
 class Simulation:
     def __init__(self, n_bodies=100000):
@@ -18,14 +18,23 @@ class Simulation:
         
         # Create bodies with proper initialization
         self._initialize_bodies(n_bodies)
-        
-        # Initialize quadtree with parameters matching Rust
+          # Initialize quadtree with parameters matching Rust
         self.quadtree = QuadTree(theta=1.0, epsilon=1.0, leaf_capacity=16)
         
         # Convert bodies to list format for compatibility
         self.bodies = [Body(self.positions[i].copy(), self.velocities[i].copy(), 
-                         self.masses[i], self.radii[i]) 
+                           self.masses[i], self.radii[i]) 
                       for i in range(n_bodies)]
+        
+        # Initialize thread pool for parallel computation
+        self.executor = ThreadPoolExecutor(max_workers=os.cpu_count())
+                        def _compute_forces_chunk(self, chunk_range):
+        """Compute forces for a chunk of bodies."""
+        start_idx, end_idx = chunk_range
+        forces = np.zeros((end_idx - start_idx, 2), dtype=np.float32)
+        for i in range(start_idx, end_idx):
+            forces[i - start_idx] = self.quadtree.compute_force(self.bodies[i], i)
+        return forces
 
     def step(self) -> None:
         """Advance the simulation by one timestep."""
@@ -36,21 +45,19 @@ class Simulation:
         
         # Calculate forces using parallel processing
         n_bodies = len(self.bodies)
-        chunk_size = max(1, n_bodies // (os.cpu_count() or 1))
+        n_threads = os.cpu_count() or 1
+        chunk_size = max(1, n_bodies // n_threads)
         
-        # Create process pool if not exists
-        if not hasattr(self, 'pool'):
-            self.pool = mp.Pool(processes=max(1, os.cpu_count() - 1))
-            
-        # Split bodies into chunks for parallel processing
-        chunks = [(i, min(i + chunk_size, n_bodies)) 
-                 for i in range(0, n_bodies, chunk_size)]
+        # Create chunks for parallel processing
+        chunks = []
+        for start in range(0, n_bodies, chunk_size):
+            end = min(start + chunk_size, n_bodies)
+            chunks.append((start, end))
         
-        # Calculate forces in parallel
-        chunk_forces = self.pool.map(self._compute_chunk_forces, chunks)
-        
-        # Combine forces
-        accelerations = np.concatenate(chunk_forces)
+        # Process chunks in parallel using thread pool
+        futures = [self.executor.submit(self._compute_forces_chunk, chunk) 
+                  for chunk in chunks]
+        accelerations = np.concatenate([future.result() for future in futures])
         
         # Update all bodies using vectorized operations
         self.velocities += accelerations * self.dt
@@ -123,6 +130,19 @@ class Simulation:
     def get_body_radii(self) -> np.ndarray:
         """Return radii of all bodies for rendering."""
         return self.radii.copy()
+
+    def _compute_chunk_forces(self, chunk_range):
+        """Compute gravitational forces for a chunk of bodies."""
+        start_idx, end_idx = chunk_range
+        chunk_accelerations = np.zeros((end_idx - start_idx, 2), dtype=np.float32)
+        
+        # Calculate forces for each body in the chunk
+        for i in range(start_idx, end_idx):
+            # Get gravitational acceleration from quadtree
+            acceleration = self.quadtree.compute_force(self.bodies[i], i)
+            chunk_accelerations[i - start_idx] = acceleration
+            
+        return chunk_accelerations
 
     def _handle_collisions(self):
         """Handle collisions between bodies (matching Rust implementation)."""

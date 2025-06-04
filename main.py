@@ -45,7 +45,7 @@ class Renderer:
                 offset=self.offset
             )
             
-    def handle_input(self, event):
+    def handle_input(self, event): 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 2:  # Middle mouse button
                 self.drag_start = np.array(pygame.mouse.get_pos())
@@ -99,7 +99,7 @@ def main():
 
 
     # Use 1,000 bodies to test performance
-    n_bodies = 1000
+    n_bodies = 300
     sim = Simulation(n_bodies=n_bodies)
     
     # Create renderer
@@ -117,7 +117,6 @@ def main():
     
     # Set up simulation thread
     from queue import Queue, Empty
-    from dataclasses import asdict
     
     state_queue = Queue(maxsize=1)  # Only keep latest state
     simulation_running = True
