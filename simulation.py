@@ -1,4 +1,4 @@
-﻿import numpy as np
+import numpy as np
 from body import Body
 from quadtree import QuadTree
 import os
@@ -18,7 +18,8 @@ class Simulation:
         
         # Create bodies with proper initialization
         self._initialize_bodies(n_bodies)
-          # Initialize quadtree with parameters matching Rust
+        
+        # Initialize quadtree with parameters matching Rust
         self.quadtree = QuadTree(theta=1.0, epsilon=1.0, leaf_capacity=16)
         
         # Convert bodies to list format for compatibility
@@ -28,7 +29,8 @@ class Simulation:
         
         # Initialize thread pool for parallel computation
         self.executor = ThreadPoolExecutor(max_workers=os.cpu_count())
-                        def _compute_forces_chunk(self, chunk_range):
+
+    def _compute_forces_chunk(self, chunk_range):
         """Compute forces for a chunk of bodies."""
         start_idx, end_idx = chunk_range
         forces = np.zeros((end_idx - start_idx, 2), dtype=np.float32)
@@ -63,7 +65,7 @@ class Simulation:
         self.velocities += accelerations * self.dt
         self.positions += self.velocities * self.dt
         
-        # Update bodies list (can be done in parallel if needed)
+        # Update bodies list
         for i in range(n_bodies):
             self.bodies[i].pos = self.positions[i].copy()
             self.bodies[i].vel = self.velocities[i].copy()
@@ -123,30 +125,8 @@ class Simulation:
                 v_scale = np.sqrt(total_mass[i-1] / pos_mag)
                 self.velocities[i] *= v_scale
 
-    def get_body_positions(self) -> np.ndarray:
-        """Return positions of all bodies for rendering."""
-        return self.positions.copy()
-
-    def get_body_radii(self) -> np.ndarray:
-        """Return radii of all bodies for rendering."""
-        return self.radii.copy()
-
-    def _compute_chunk_forces(self, chunk_range):
-        """Compute gravitational forces for a chunk of bodies."""
-        start_idx, end_idx = chunk_range
-        chunk_accelerations = np.zeros((end_idx - start_idx, 2), dtype=np.float32)
-        
-        # Calculate forces for each body in the chunk
-        for i in range(start_idx, end_idx):
-            # Get gravitational acceleration from quadtree
-            acceleration = self.quadtree.compute_force(self.bodies[i], i)
-            chunk_accelerations[i - start_idx] = acceleration
-            
-        return chunk_accelerations
-
     def _handle_collisions(self):
         """Handle collisions between bodies (matching Rust implementation)."""
-        # Build list of collision pairs
         for i in range(len(self.bodies)):
             pos_i = self.positions[i]
             vel_i = self.velocities[i]
@@ -216,3 +196,11 @@ class Simulation:
                 self.bodies[i].vel = self.velocities[i].copy()
                 self.bodies[j].pos = self.positions[j].copy()
                 self.bodies[j].vel = self.velocities[j].copy()
+
+    def get_body_positions(self) -> np.ndarray:
+        """Return positions of all bodies for rendering."""
+        return self.positions.copy()
+
+    def get_body_radii(self) -> np.ndarray:
+        """Return radii of all bodies for rendering."""
+        return self.radii.copy()

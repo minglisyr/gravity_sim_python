@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 import pygame.gfxdraw
 import hsluv
+from queue import Queue, Empty
 
 @dataclass
 class RenderState:
@@ -32,6 +33,7 @@ class Renderer:
         self.state_lock = threading.Lock()
         self.current_state: Optional[RenderState] = None
         self.initialized = False  # Track if we've done initial positioning
+        self.depth_range = (0, 16)  # Add depth range for quadtree visualization
         
     def update_state(self, positions, velocities, radii):
         with self.state_lock:
@@ -106,18 +108,14 @@ def main():
     renderer = Renderer(WINDOW_SIZE)
     screen = pygame.display.set_mode(WINDOW_SIZE)
     pygame.display.set_caption("Barnes-Hut N-body Simulation")
-    
-    # Set up FPS tracking
+      # Set up FPS tracking
     clock = pygame.time.Clock()
     font = pygame.font.Font(None, 36)
     fps_update_interval = 0.5
     last_fps_update = time.time()
     fps_display = "FPS: 0"
     frame_count = 0
-    
-    # Set up simulation thread
-    from queue import Queue, Empty
-    
+      # Set up simulation thread
     state_queue = Queue(maxsize=1)  # Only keep latest state
     simulation_running = True
     paused = False
@@ -136,15 +134,16 @@ def main():
                 # Update state at most 60 times per second
                 current_time = time.time()
                 if current_time - last_update >= 1/60:
+                    # Get state including velocities
+                    positions = sim.get_body_positions()
+                    velocities = sim.velocities  # Access velocities directly from sim
+                    radii = sim.get_body_radii()
+                    
                     # Try to update state without blocking
                     try:
-                        # Get state including velocities
-                        positions = sim.get_body_positions()
-                        velocities = sim.velocities  # Access velocities directly from sim
-                        radii = sim.get_body_radii()
                         state_queue.put_nowait((positions, velocities, radii, physics_time))
                         last_update = current_time
-                    except Queue.Full:
+                    except Empty:
                         pass  # Skip update if renderer is behind
             else:
                 time.sleep(1/60)  # Don't burn CPU while paused
@@ -189,12 +188,10 @@ def main():
                 positions = np.array([])
                 velocities = np.array([])
                 radii = np.array([])
-            physics_time = 0
-
-        # Clear screen
+            physics_time = 0        # Clear screen
         screen.fill(BACKGROUND_COLOR)
 
-            # Draw bodies using the current render state
+        # Draw bodies using the current render state
         with renderer.state_lock:
             if renderer.current_state:
                 state = renderer.current_state
